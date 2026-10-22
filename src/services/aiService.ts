@@ -1,0 +1,194 @@
+import { DEMO_PRODUCTS } from '../demo/demoData';
+
+export interface AIChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface AIChatResponse {
+  reply: string;
+  products?: Array<{
+    id: string;
+    slug: string;
+    name: string;
+    price: number;
+    image?: string;
+  }>;
+  quotaExceeded?: boolean;
+}
+
+export interface AISearchResponse {
+  filters?: {
+    category_slug?: string;
+    color?: string;
+    size?: string;
+    max_price?: number;
+    min_price?: number;
+    keywords?: string[];
+  };
+  interpretedQuery?: string;
+  quotaExceeded?: boolean;
+}
+
+export const aiService = {
+  async chat(messages: AIChatMessage[], language: 'en' | 'ur'): Promise<AIChatResponse> {
+    try {
+      const res = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages, language }),
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.warn('AI chat endpoint call failed, using graceful fallback:', e);
+    }
+
+    // High quality local fallback response
+    const lastMsg = messages[messages.length - 1]?.content.toLowerCase() || '';
+
+    if (lastMsg.includes('wedding') || lastMsg.includes('shadi') || lastMsg.includes('شادی')) {
+      return {
+        reply: language === 'ur'
+          ? 'شادی اور بارات کی تقریب کے لیے ہماری رائل را سلک شیروانی اور مخملی بلیک واسکٹ سب سے شاندار انتخاب ہے۔ ان ملبوسات کی کڑھائی اور فٹنگ آپ کو پروقار تاثر دے گی۔'
+          : 'For weddings and celebratory Barat occasions, our Royal Raw Silk Sherwani paired with a hand-tailored Embroidered Velvet Waistcoat offers an unrivaled distinguished presence.',
+        products: [
+          { id: 'prod-3', slug: 'royal-ivory-crimson-raw-silk-sherwani', name: 'Royal Ivory & Crimson Raw Silk Sherwani', price: 32500, image: DEMO_PRODUCTS[2].images?.[0]?.url },
+          { id: 'prod-2', slug: 'velvet-midnight-black-embroidered-waistcoat', name: 'Velvet Midnight Black Embroidered Waistcoat', price: 5999, image: DEMO_PRODUCTS[1].images?.[0]?.url },
+        ]
+      };
+    }
+
+    if (lastMsg.includes('black') || lastMsg.includes('سیاہ') || lastMsg.includes('کالا')) {
+      return {
+        reply: language === 'ur'
+          ? 'آرٹس اپیرل کی پہچان ہمارا امپیریل جیٹ بلیک شلوار قمیض اور سگنیچر ریڈ ٹائی ہے۔ یہ روزمرہ اور عید دونوں کے لیے شاندار ہیں۔'
+          : 'Black is the soul of ARTS APPAREL. Our Imperial Jet Black Shalwar Kameez and obsidian outerwear represent our signature tailoring craft.',
+        products: [
+          { id: 'prod-1', slug: 'imperial-jet-black-shalwar-kameez', name: 'Imperial Jet Black Shalwar Kameez', price: 5499, image: DEMO_PRODUCTS[0].images?.[0]?.url },
+          { id: 'prod-7', slug: 'crimson-red-silk-woven-tie', name: 'Crimson Red Silk Woven Tie', price: 1799, image: DEMO_PRODUCTS[6].images?.[0]?.url }
+        ]
+      };
+    }
+
+    return {
+      reply: language === 'ur'
+        ? 'آرٹس اپیرل میں خوش آمدید! آپ کسی بھی مخصوص لباس، فیبرک یا سائز کے متعلق رہنمائی حاصل کر سکتے ہیں۔ کیا آپ کو شادی، فارمل یا عام پہناوے کے لیے لباس درکار ہے؟'
+        : 'Welcome to ARTS APPAREL styling concierge! I can help you select the ideal cut, recommend bespoke fits for events, or check delivery and fabrics.',
+      products: [
+        { id: 'prod-1', slug: 'imperial-jet-black-shalwar-kameez', name: 'Imperial Jet Black Shalwar Kameez', price: 5499, image: DEMO_PRODUCTS[0].images?.[0]?.url },
+      ]
+    };
+  },
+
+  async search(query: string): Promise<AISearchResponse> {
+    try {
+      const res = await fetch('/api/ai/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.warn('AI search call failed, using heuristic search:', e);
+    }
+
+    const q = query.toLowerCase();
+    const filters: AISearchResponse['filters'] = {};
+
+    if (q.includes('waistcoat') || q.includes('واسکٹ')) filters.category_slug = 'waistcoat';
+    else if (q.includes('shalwar') || q.includes('kameez') || q.includes('شلوار')) filters.category_slug = 'shalwar-kameez';
+    else if (q.includes('kurta') || q.includes('کرتا')) filters.category_slug = 'kurta';
+    else if (q.includes('suit') || q.includes('سوٹ')) filters.category_slug = 'suits';
+    else if (q.includes('sherwani') || q.includes('شیروانی')) filters.category_slug = 'sherwani';
+
+    if (q.includes('black') || q.includes('سیاہ')) filters.color = 'black';
+    if (q.includes('white') || q.includes('سفید')) filters.color = 'white';
+
+    const priceMatch = q.match(/(?:under|below|کم)\s*(?:rs\.?|pkr)?\s*(\d+)/i) || q.match(/(\d{4,5})/);
+    if (priceMatch) {
+      filters.max_price = parseInt(priceMatch[1], 10);
+    }
+
+    return {
+      filters,
+      interpretedQuery: query,
+    };
+  },
+
+  async explainSize(heightCm: number, weightKg: number, fit: string, recommendedSize: string): Promise<string> {
+    try {
+      const res = await fetch('/api/ai/size-explain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ height_cm: heightCm, weight_kg: weightKg, fit, recommended_size: recommendedSize }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data.text;
+      }
+    } catch {
+      // Fallback
+    }
+
+    return `Based on your height of ${heightCm} cm and weight of ${weightKg} kg with a ${fit} preference, size ${recommendedSize} offers our master tailor's recommended drape with balanced shoulder width and length.`;
+  },
+
+  async generateProductDescription(name: string, category: string, fabric: string, points: string[]): Promise<{ description_en: string; description_ur: string }> {
+    try {
+      const res = await fetch('/api/ai/describe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, category, fabric, points }),
+      });
+      if (res.ok) return await res.json();
+    } catch {
+      // Fallback
+    }
+
+    return {
+      description_en: `Expertly tailored from premium ${fabric || 'fine blend'}, this ${name} blends timeless Pakistani elegance with precision stitching. ${points.join('. ')}`,
+      description_ur: `اعلیٰ درجے کے ${fabric || 'کپڑے'} سے تیار کردہ ${name}، نفاست اور پائیداری کا شاہکار امتزاج۔`
+    };
+  },
+
+  async generateSeo(name: string, category: string, description: string): Promise<{ seo_title: string; seo_description: string; tags: string[] }> {
+    try {
+      const res = await fetch('/api/ai/seo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, category, description }),
+      });
+      if (res.ok) return await res.json();
+    } catch {
+      // Fallback
+    }
+
+    return {
+      seo_title: `${name} | ARTS APPAREL Menswear Pakistan`,
+      seo_description: `Shop the ${name} online at ARTS APPAREL. Master tailored ${category} in Pakistan with nationwide Cash on Delivery.`,
+      tags: [name.toLowerCase().split(' ')[0], category.toLowerCase(), 'pakistan-menswear', 'online-clothing']
+    };
+  },
+
+  async generateReviewSummary(productId: string, productName: string, reviews: Array<{ rating: number; comment: string }>): Promise<{ summary_en: string; summary_ur: string }> {
+    try {
+      const res = await fetch('/api/ai/review-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product_id: productId, product_name: productName, reviews }),
+      });
+      if (res.ok) return await res.json();
+    } catch {
+      // Fallback
+    }
+
+    return {
+      summary_en: `Verified buyers praise the master craftsmanship, true-to-size cut, and premium textile feel of this ${productName}. Highly recommended for special occasions and daily sophistication.`,
+      summary_ur: `خریداروں نے اس ${productName} کی نفیس سلائی، شاندار فٹنگ اور معیاری کپڑے کو بے حد پسند کیا ہے۔ خاص تقریبات کے لیے انتہائی موزوں۔`,
+    };
+  }
+};

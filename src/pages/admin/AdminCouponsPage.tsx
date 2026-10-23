@@ -20,33 +20,57 @@ export const AdminCouponsPage: React.FC = () => {
     loadCoupons();
   }, []);
 
+  const [isLoading, setIsLoading] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
   const loadCoupons = async () => {
-    const list = await couponService.getCoupons();
-    setCoupons(list);
+    setIsLoading(true);
+    try {
+      const list = await couponService.getCoupons();
+      setCoupons(list);
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: err?.message || 'Failed to load coupons from database.' });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!code.trim()) return;
+    setFeedback(null);
+    setIsLoading(true);
 
-    await couponService.addCoupon({
-      code: code.trim().toUpperCase(),
-      type,
-      value: parseFloat(value) || 0,
-      min_order_amount: parseFloat(minOrder) || 0,
-      max_discount: maxDiscount ? parseFloat(maxDiscount) : null,
-      usage_limit: 100,
-      is_active: true,
-    });
+    try {
+      await couponService.addCoupon({
+        code: code.trim().toUpperCase(),
+        type,
+        value: parseFloat(value) || 0,
+        min_order_amount: parseFloat(minOrder) || 0,
+        max_discount: maxDiscount ? parseFloat(maxDiscount) : null,
+        usage_limit: 100,
+        is_active: true,
+      });
 
-    await loadCoupons();
-    setShowAddForm(false);
-    setCode('');
+      await loadCoupons();
+      setShowAddForm(false);
+      setCode('');
+      setFeedback({ type: 'success', message: `Coupon "${code.toUpperCase()}" created successfully!` });
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: err?.message || 'Failed to create coupon in database.' });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleToggle = async (id: string) => {
-    await couponService.toggleCoupon(id);
-    await loadCoupons();
+    setFeedback(null);
+    try {
+      await couponService.toggleCoupon(id);
+      await loadCoupons();
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: err?.message || 'Failed to toggle coupon status.' });
+    }
   };
 
   return (
@@ -63,6 +87,19 @@ export const AdminCouponsPage: React.FC = () => {
             {showAddForm ? 'Close Form' : '+ Create New Coupon'}
           </Button>
         </div>
+
+        {feedback && (
+          <div
+            className={`p-3 rounded text-xs border ${
+              feedback.type === 'success'
+                ? 'bg-emerald-950/80 border-emerald-800 text-emerald-200'
+                : 'bg-red-950/80 border-red-800 text-red-200'
+            }`}
+          >
+            {feedback.message}
+          </div>
+        )}
+
 
         {/* Add Coupon Form */}
         {showAddForm && (

@@ -9,12 +9,27 @@ export const AdminSettingsPage: React.FC = () => {
   const { settings, updateSettings } = useSettings();
   const [form, setForm] = useState<StoreSettingsMap>(settings);
   const [savedMsg, setSavedMsg] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  React.useEffect(() => {
+    setForm(settings);
+  }, [settings]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateSettings(form);
-    setSavedMsg(true);
-    setTimeout(() => setSavedMsg(false), 3000);
+    setErrorMsg(null);
+    setSavedMsg(false);
+    setIsSaving(true);
+    try {
+      await updateSettings(form);
+      setSavedMsg(true);
+      setTimeout(() => setSavedMsg(false), 4000);
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Failed to save store settings to database.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -27,7 +42,7 @@ export const AdminSettingsPage: React.FC = () => {
               Live business details, payment accounts, and announcement messages (Owner Only)
             </p>
           </div>
-          <Button type="submit" variant="primary" size="md">
+          <Button type="submit" variant="primary" size="md" isLoading={isSaving} disabled={isSaving}>
             Save Settings
           </Button>
         </div>
@@ -37,6 +52,13 @@ export const AdminSettingsPage: React.FC = () => {
             Settings updated successfully across the storefront!
           </div>
         )}
+
+        {errorMsg && (
+          <div className="p-3 bg-red-950/80 border border-red-800 rounded text-red-300">
+            {errorMsg}
+          </div>
+        )}
+
 
         {/* 1. Store Identity & Contact */}
         <div className="p-6 bg-[#111111] border border-neutral-800 rounded-[8px] space-y-4">

@@ -5,15 +5,24 @@ import { bannerService } from '../../services/bannerService';
 
 export const AdminBannersPage: React.FC = () => {
   const [banners, setBanners] = useState<Banner[]>([]);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
-    bannerService.getBanners(true).then(setBanners);
+    bannerService.getBanners(true).then(setBanners).catch((err) => {
+      setFeedback({ type: 'error', message: err?.message || 'Failed to load banners.' });
+    });
   }, []);
 
   const handleToggle = async (id: string) => {
-    await bannerService.toggleBanner(id);
-    const updated = await bannerService.getBanners(true);
-    setBanners(updated);
+    setFeedback(null);
+    try {
+      await bannerService.toggleBanner(id);
+      const updated = await bannerService.getBanners(true);
+      setBanners(updated);
+      setFeedback({ type: 'success', message: 'Banner status updated successfully.' });
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: err?.message || 'Failed to update banner in database.' });
+    }
   };
 
   return (
@@ -25,6 +34,19 @@ export const AdminBannersPage: React.FC = () => {
             Control the visual hero carousel on the home storefront (Owner Only)
           </p>
         </div>
+
+        {feedback && (
+          <div
+            className={`p-3 rounded text-xs border ${
+              feedback.type === 'success'
+                ? 'bg-emerald-950/80 border-emerald-800 text-emerald-200'
+                : 'bg-red-950/80 border-red-800 text-red-200'
+            }`}
+          >
+            {feedback.message}
+          </div>
+        )}
+
 
         <div className="space-y-4">
           {banners.map((b) => (

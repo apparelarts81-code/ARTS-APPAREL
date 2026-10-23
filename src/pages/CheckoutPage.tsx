@@ -115,18 +115,22 @@ export const CheckoutPage: React.FC = () => {
         deliveryCharge,
         total,
         userId: user?.id || null,
+        paymentProofFile: proofFile,
         paymentProofUrl: proofPreview || undefined,
         transactionId: transactionId.trim() || undefined,
       });
 
       clearCart();
-      navigate(`/order-success/${orderResult.order_number}`);
+      navigate(`/order-success/${orderResult.order_number}`, {
+        state: { proofWarning: orderResult.proofUploadWarning },
+      });
     } catch (err: any) {
       setFormError(err?.message || 'Failed to place order. Please verify your details.');
     } finally {
       setIsSubmitting(false);
     }
   };
+
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 text-white">
@@ -471,9 +475,11 @@ export const CheckoutPage: React.FC = () => {
             size="lg"
             className="w-full uppercase font-bold tracking-wider"
             isLoading={isSubmitting}
+            disabled={isSubmitting}
           >
             {t('checkout.place_order')}
           </Button>
+
 
           <p className="text-[11px] text-neutral-400 text-center">
             By placing your order, you agree to ARTS APPAREL 7-day inspection and return policy.

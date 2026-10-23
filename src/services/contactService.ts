@@ -1,9 +1,9 @@
 import { ContactMessage } from '../types/database';
 import { isDemoMode, supabase } from '../lib/supabase';
 
-const STORAGE_KEY_MESSAGES = 'arts_apparel_messages';
+const STORAGE_KEY_MESSAGES = 'arts_demo_messages';
 
-const INITIAL_MESSAGES: ContactMessage[] = [
+const INITIAL_DEMO_MESSAGES: ContactMessage[] = [
   {
     id: 'msg-1',
     name: 'Hamza Farooq',
@@ -24,17 +24,19 @@ const INITIAL_MESSAGES: ContactMessage[] = [
   },
 ];
 
-function loadMessages(): ContactMessage[] {
+function loadDemoMessages(): ContactMessage[] {
+  if (typeof window === 'undefined') return [...INITIAL_DEMO_MESSAGES];
   try {
     const saved = localStorage.getItem(STORAGE_KEY_MESSAGES);
     if (saved) return JSON.parse(saved);
   } catch {}
-  return [...INITIAL_MESSAGES];
+  return [...INITIAL_DEMO_MESSAGES];
 }
 
-let inMemoryMessages: ContactMessage[] = loadMessages();
+let inMemoryMessages: ContactMessage[] = loadDemoMessages();
 
-function saveMessages() {
+function saveDemoMessages() {
+  if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(STORAGE_KEY_MESSAGES, JSON.stringify(inMemoryMessages));
   } catch {}
@@ -42,42 +44,77 @@ function saveMessages() {
 
 export const contactService = {
   async submitMessage(data: { name: string; phone?: string; email?: string; message: string }): Promise<{ success: boolean; id: string }> {
-    const newMsg: ContactMessage = {
-      id: `msg-${Date.now()}`,
-      name: data.name.trim(),
-      phone: data.phone?.trim() || null,
-      email: data.email?.trim() || null,
-      message: data.message.trim(),
-      status: 'new',
-      created_at: new Date().toISOString(),
-    };
-
-    inMemoryMessages = [newMsg, ...inMemoryMessages];
-    saveMessages();
-
     if (!isDemoMode && supabase) {
-      await supabase.from('contact_messages').insert([newMsg]);
+      const { data: inserted, error } = await supabase
+        .from('contact_messages')
+        .insert([{
+          name: data.name.trim(),
+          phone: data.phone?.trim() || null,
+          email: data.email?.trim() || null,
+          message: data.message.trim(),
+          status: 'new',
+        }])
+        .select()
+        .single();
+
+      if (error) {
+        throw new Error(`Failed to send message: ${error.message}`);
+      }
+      return { success: true, id: inserted.id };
     }
 
-    return { success: true, id: newMsg.id };
+    if (isDemoMode) {
+      const newMsg: ContactMessage = {
+        id: `msg-${Date.now()}`,
+        name: data.name.trim(),
+        phone: data.phone?.trim() || undefined,
+        email: data.email?.trim() || undefined,
+        message: data.message.trim(),
+        status: 'new',
+        created_at: new Date().toISOString(),
+      };
+
+      inMemoryMessages = [newMsg, ...inMemoryMessages];
+      saveDemoMessages();
+      return { success: true, id: newMsg.id };
+    }
+
+    throw new Error('Database connection is not configured.');
   },
 
   async getMessages(): Promise<ContactMessage[]> {
     if (!isDemoMode && supabase) {
-      const { data } = await supabase.from('contact_messages').select('*').order('created_at', { ascending: false });
-      if (data && data.length > 0) return data;
+      const { data, error } = await supabase.from('contact_messages').select('*').order('created_at', { ascending: false });
+      if (error) {
+        throw new Error(`Failed to load messages: ${error.message}`);
+      }
+      return data || [];
     }
-    return [...inMemoryMessages];
+
+    if (isDemoMode) {
+      return [...inMemoryMessages];
+    }
+
+    return [];
   },
 
   async markHandled(id: string): Promise<boolean> {
-    inMemoryMessages = inMemoryMessages.map((m) =>
-      m.id === id ? { ...m, status: 'handled' as const } : m
-    );
-    saveMessages();
     if (!isDemoMode && supabase) {
-      await supabase.from('contact_messages').update({ status: 'handled' }).eq('id', id);
+      const { error } = await supabase.from('contact_messages').update({ status: 'handled' }).eq('id', id);
+      if (error) {
+        throw new Error(`Failed to mark message as handled: ${error.message}`);
+      }
+      return true;
     }
-    return true;
+
+    if (isDemoMode) {
+      inMemoryMessages = inMemoryMessages.map((m) =>
+        m.id === id ? { ...m, status: 'handled' as const } : m
+      );
+      saveDemoMessages();
+      return true;
+    }
+
+    throw new Error('Database connection is not configured.');
   },
 };

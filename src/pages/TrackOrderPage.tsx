@@ -67,9 +67,10 @@ export const TrackOrderPage: React.FC = () => {
     setIsUploadingProof(true);
     try {
       const uploadRes = await storageService.uploadPaymentProof(order.id, proofFile);
-      await orderService.addPaymentProof(order.order_number, phone, uploadRes.url, proofTid);
+      await orderService.addPaymentProof(order.order_number, phone, uploadRes.path, proofTid);
       setProofUploadedMsg(true);
       const updated = await orderService.trackOrder(order.order_number, phone);
+
       if (updated) setOrder(updated);
     } catch (err) {
       console.error(err);

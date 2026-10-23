@@ -23,12 +23,20 @@ export const AdminProductsPage: React.FC = () => {
       p.fabric.toLowerCase().includes(search.toLowerCase())
   );
 
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
   const handleDelete = async (id: string) => {
     if (!isOwner) return;
-    if (confirm('Are you sure you want to delete this garment?')) {
-      await catalogService.deleteProduct(id);
-      const refreshed = await catalogService.getProducts();
-      setProducts(refreshed);
+    setFeedback(null);
+    if (confirm('Are you sure you want to deactivate or remove this garment?')) {
+      try {
+        await catalogService.deleteProduct(id);
+        const refreshed = await catalogService.getProducts();
+        setProducts(refreshed);
+        setFeedback({ type: 'success', message: 'Product updated successfully.' });
+      } catch (err: any) {
+        setFeedback({ type: 'error', message: err?.message || 'Failed to delete product from database.' });
+      }
     }
   };
 
@@ -46,6 +54,19 @@ export const AdminProductsPage: React.FC = () => {
             <Button variant="primary" size="sm">+ Add New Product</Button>
           </Link>
         </div>
+
+        {feedback && (
+          <div
+            className={`p-3 rounded text-xs border ${
+              feedback.type === 'success'
+                ? 'bg-emerald-950/80 border-emerald-800 text-emerald-200'
+                : 'bg-red-950/80 border-red-800 text-red-200'
+            }`}
+          >
+            {feedback.message}
+          </div>
+        )}
+
 
         {/* Search */}
         <div className="flex items-center gap-3 max-w-md">

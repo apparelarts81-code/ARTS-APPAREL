@@ -152,9 +152,10 @@ export const AdminDeliveryPage: React.FC = () => {
                   </td>
                   <td className="py-3 px-4 text-right">
                     <button
-                      onClick={() => handleToggle(r.id)}
+                      onClick={() => handleToggle(r)}
                       className="text-xs text-neutral-400 hover:text-white underline"
                     >
+
                       {r.is_active ? 'Disable' : 'Enable'}
                     </button>
                   </td>

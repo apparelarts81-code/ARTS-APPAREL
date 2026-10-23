@@ -8,6 +8,8 @@ import { ORDER_STATUS_LABELS } from '../lib/constants';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 
+import { addressService } from '../services/addressService';
+
 export const AccountPage: React.FC = () => {
   const { user, logout, isLoggedIn, role } = useAuth();
   const navigate = useNavigate();
@@ -17,32 +19,38 @@ export const AccountPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'orders' | 'profile' | 'addresses'>('orders');
 
   // Addresses state
-  const [addresses, setAddresses] = useState<Address[]>([
-    {
-      id: 'addr-1',
-      user_id: user?.id || 'usr-demo',
-      label: 'Home',
-      full_name: user?.full_name || 'Muhammad Usman',
-      phone: user?.phone || '0305 8165623',
-      city: 'Sadiqabad',
-      address_line: 'Club Road, Near New Cafe Sajawal',
-      is_default: true,
-      created_at: new Date().toISOString(),
-    },
-  ]);
+  const [addresses, setAddresses] = useState<Address[]>([]);
   const [showAddAddress, setShowAddAddress] = useState(false);
   const [newLabel, setNewLabel] = useState('Home');
-  const [newName, setNewName] = useState(user?.full_name || '');
-  const [newPhone, setNewPhone] = useState(user?.phone || '0305 8165623');
+  const [newName, setNewName] = useState('');
+  const [newPhone, setNewPhone] = useState('');
   const [newCity, setNewCity] = useState('Sadiqabad');
   const [newAddressLine, setNewAddressLine] = useState('');
+
+  const loadUserData = React.useCallback(async (userId: string) => {
+    try {
+      const [userOrders, userAddrs] = await Promise.all([
+        orderService.getMyOrders(userId),
+        addressService.getAddresses(userId),
+      ]);
+      setOrders(userOrders);
+      setAddresses(userAddrs);
+    } catch (e) {
+      console.warn('Failed to load user account data:', e);
+    }
+  }, []);
 
   useEffect(() => {
     if (!isLoggedIn) {
       navigate('/login');
       return;
     }
-    orderService.getAllOrders().then(setOrders);
+
+    if (user?.id) {
+      setNewName(user.full_name || '');
+      setNewPhone(user.phone || '');
+      loadUserData(user.id);
+    }
 
     // Sync active tab with route
     if (location.pathname.includes('/addresses')) {
@@ -50,41 +58,51 @@ export const AccountPage: React.FC = () => {
     } else if (location.pathname.includes('/orders')) {
       setActiveTab('orders');
     }
-  }, [isLoggedIn, location.pathname, navigate]);
+  }, [isLoggedIn, user?.id, location.pathname, navigate, loadUserData]);
 
-  const handleAddAddress = (e: React.FormEvent) => {
+  const handleAddAddress = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newName.trim() || !newAddressLine.trim()) return;
+    if (!user?.id || !newName.trim() || !newAddressLine.trim()) return;
 
-    const newAddr: Address = {
-      id: `addr-${Date.now()}`,
-      user_id: user?.id || 'usr-demo',
-      label: newLabel,
-      full_name: newName,
-      phone: newPhone,
-      city: newCity,
-      address_line: newAddressLine,
-      is_default: addresses.length === 0,
-      created_at: new Date().toISOString(),
-    };
+    try {
+      await addressService.saveAddress(user.id, {
+        label: newLabel,
+        full_name: newName.trim(),
+        phone: newPhone.trim(),
+        city: newCity.trim(),
+        address_line: newAddressLine.trim(),
+        is_default: addresses.length === 0,
+      });
 
-    setAddresses([...addresses, newAddr]);
-    setShowAddAddress(false);
-    setNewAddressLine('');
+      const refreshed = await addressService.getAddresses(user.id);
+      setAddresses(refreshed);
+      setShowAddAddress(false);
+      setNewAddressLine('');
+    } catch (err: any) {
+      console.error('Failed to add address:', err);
+    }
   };
 
-  const handleSetDefault = (id: string) => {
-    setAddresses((prev) =>
-      prev.map((a) => ({
-        ...a,
-        is_default: a.id === id,
-      }))
-    );
+  const handleSetDefault = async (id: string) => {
+    if (!user?.id) return;
+    try {
+      const refreshed = await addressService.setDefaultAddress(user.id, id);
+      setAddresses(refreshed);
+    } catch (err: any) {
+      console.error('Failed to set default address:', err);
+    }
   };
 
-  const handleDeleteAddress = (id: string) => {
-    setAddresses((prev) => prev.filter((a) => a.id !== id));
+  const handleDeleteAddress = async (id: string) => {
+    if (!user?.id) return;
+    try {
+      const refreshed = await addressService.deleteAddress(user.id, id);
+      setAddresses(refreshed);
+    } catch (err: any) {
+      console.error('Failed to delete address:', err);
+    }
   };
+
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8 text-white">

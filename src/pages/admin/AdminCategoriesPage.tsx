@@ -53,46 +53,67 @@ export const AdminCategoriesPage: React.FC = () => {
     setShowAddModal(true);
   };
 
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nameEn.trim()) return;
+    setFeedback(null);
 
     const autoSlug = slug.trim() || nameEn.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
-    if (editingCategory) {
-      await catalogService.updateCategory(editingCategory.id, {
-        name_en: nameEn.trim(),
-        name_ur: nameUr.trim(),
-        slug: autoSlug,
-        image_url: imageUrl.trim() || 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?q=80&w=800',
-        sort_order: parseInt(sortOrder, 10) || 0,
-      });
-    } else {
-      await catalogService.addCategory({
-        name_en: nameEn.trim(),
-        name_ur: nameUr.trim(),
-        slug: autoSlug,
-        image_url: imageUrl.trim() || 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?q=80&w=800',
-        sort_order: parseInt(sortOrder, 10) || 0,
-        is_active: true,
-      });
-    }
+    try {
+      if (editingCategory) {
+        await catalogService.updateCategory(editingCategory.id, {
+          name_en: nameEn.trim(),
+          name_ur: nameUr.trim(),
+          slug: autoSlug,
+          image_url: imageUrl.trim() || 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?q=80&w=800',
+          sort_order: parseInt(sortOrder, 10) || 0,
+        });
+        setFeedback({ type: 'success', message: 'Category updated successfully.' });
+      } else {
+        await catalogService.addCategory({
+          name_en: nameEn.trim(),
+          name_ur: nameUr.trim(),
+          slug: autoSlug,
+          image_url: imageUrl.trim() || 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?q=80&w=800',
+          sort_order: parseInt(sortOrder, 10) || 0,
+          is_active: true,
+        });
+        setFeedback({ type: 'success', message: 'Category created successfully.' });
+      }
 
-    resetForm();
-    await loadCategories();
+      resetForm();
+      await loadCategories();
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: err?.message || 'Failed to save category in database.' });
+    }
   };
 
   const handleToggleActive = async (cat: Category) => {
     if (!isOwner) return;
-    await catalogService.updateCategory(cat.id, { is_active: !cat.is_active });
-    await loadCategories();
+    setFeedback(null);
+    try {
+      await catalogService.updateCategory(cat.id, { is_active: !cat.is_active });
+      await loadCategories();
+      setFeedback({ type: 'success', message: 'Category status updated.' });
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: err?.message || 'Failed to update category status.' });
+    }
   };
 
   const handleDelete = async (id: string) => {
     if (!isOwner) return;
+    setFeedback(null);
     if (confirm('Are you sure you want to delete this category? Products associated with it may be unlinked.')) {
-      await catalogService.deleteCategory(id);
-      await loadCategories();
+      try {
+        await catalogService.deleteCategory(id);
+        await loadCategories();
+        setFeedback({ type: 'success', message: 'Category deleted successfully.' });
+      } catch (err: any) {
+        setFeedback({ type: 'error', message: err?.message || 'Failed to delete category from database.' });
+      }
     }
   };
 
@@ -104,7 +125,7 @@ export const AdminCategoriesPage: React.FC = () => {
           <div>
             <h1 className="font-serif text-2xl sm:text-3xl font-bold">Category Management</h1>
             <p className="text-xs text-neutral-400 mt-1">
-              Organize storefront clothing collections and Urdu nomenclature (Staff: View | Owner: Edit)
+              Organize garments by classification and sort display order
             </p>
           </div>
           {isOwner && (
@@ -113,6 +134,19 @@ export const AdminCategoriesPage: React.FC = () => {
             </Button>
           )}
         </div>
+
+        {feedback && (
+          <div
+            className={`p-3 rounded text-xs border ${
+              feedback.type === 'success'
+                ? 'bg-emerald-950/80 border-emerald-800 text-emerald-200'
+                : 'bg-red-950/80 border-red-800 text-red-200'
+            }`}
+          >
+            {feedback.message}
+          </div>
+        )}
+
 
         {/* Modal / Form */}
         {showAddModal && isOwner && (

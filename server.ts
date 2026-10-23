@@ -1,8 +1,9 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import path from 'path';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 dotenv.config();
 
@@ -10,6 +11,60 @@ const app = express();
 app.use(express.json());
 
 const apiKey = process.env.GEMINI_API_KEY;
+
+// Server-side Supabase client for token verification and authorization
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+let serverSupabase: SupabaseClient | null = null;
+if (supabaseUrl && supabaseKey) {
+  serverSupabase = createClient(supabaseUrl, supabaseKey, {
+    auth: { persistSession: false },
+  });
+}
+
+// Staff / Owner Authorization Middleware for Staff AI endpoints
+async function requireStaffOrOwner(req: Request, res: Response, next: NextFunction) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    // If Supabase is not configured and running in local dev/demo, permit local testing with warning
+    if (!serverSupabase && process.env.NODE_ENV !== 'production') {
+      return next();
+    }
+    return res.status(401).json({ error: 'Unauthorized: Missing or invalid authorization token.' });
+  }
+
+  const token = authHeader.substring(7);
+
+  if (serverSupabase) {
+    try {
+      const { data: { user }, error: authError } = await serverSupabase.auth.getUser(token);
+      if (authError || !user) {
+        return res.status(401).json({ error: 'Unauthorized: Invalid authentication session.' });
+      }
+
+      const { data: profile, error: profError } = await serverSupabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+      if (profError || !profile || (profile.role !== 'staff' && profile.role !== 'owner')) {
+        return res.status(403).json({ error: 'Forbidden: Staff or Owner role required.' });
+      }
+
+      return next();
+    } catch (err: any) {
+      return res.status(500).json({ error: `Authentication verification error: ${err?.message || err}` });
+    }
+  }
+
+  if (process.env.NODE_ENV !== 'production') {
+    return next();
+  }
+
+  return res.status(503).json({ error: 'Service Unavailable: Authentication service is not configured.' });
+}
 
 // Initialize GoogleGenAI SDK on server side
 let ai: GoogleGenAI | null = null;
@@ -24,7 +79,7 @@ if (apiKey) {
   });
 }
 
-// 1. AI Chat Endpoint with gemini-4-argon and HIGH thinking level for complex menswear consulting
+// 1. AI Chat Endpoint (Public styling consultant)
 app.post('/api/ai/chat', async (req: Request, res: Response) => {
   try {
     const { messages, language } = req.body;
@@ -33,33 +88,37 @@ app.post('/api/ai/chat', async (req: Request, res: Response) => {
     }
 
     const conversationHistory = (messages || [])
+      .slice(-6)
       .map((m: any) => `${m.role === 'user' ? 'Customer' : 'ARTS Stylist'}: ${m.content}`)
       .join('\n');
 
     const systemInstruction = `You are the master styling consultant for "ARTS APPAREL", an upscale Pakistani men's clothing brand based on Club Road, Sadiqabad, Pakistan.
 Brand color identity: Pure Black, Crisp White, Crimson Red tie accent, and Crosshair mark.
-Our catalog includes:
-- Shalwar Kameez (Imperial Jet Black, Wash & Wear, Egyptian Cotton) ~Rs. 4,500 - 8,500
-- Sherwanis (Ivory & Crimson Raw Silk) ~Rs. 32,500 - 45,000
-- Waistcoats (Korean Velvet, Jamawar) ~Rs. 5,000 - 7,500
-- Italian-Cut 2-Piece Suits ~Rs. 18,500 - 25,000
-- Kurtas ~Rs. 3,500 - 5,500
-- Accessories: Red silk tie (Rs. 1,799), Karakul Caps (Rs. 6,500), Quilted winter jackets (Rs. 7,999).
-Store facts:
-- Free delivery all over Pakistan on orders above Rs. 10,000 (standard Rs. 150-250)
-- Payment: Cash on Delivery (COD), JazzCash, Easypaisa, Bank transfer
-- WhatsApp: 0305 8165623
-- 7-day easy returns policy.
+Our garment collection features:
+- Shalwar Kameez (Imperial Jet Black, Wash & Wear, Egyptian Cotton)
+- Sherwanis (Ivory & Crimson Raw Silk)
+- Waistcoats (Korean Velvet, Jamawar)
+- Italian-Cut 2-Piece Suits
+- Kurtas & Formal Menswear
+- Accessories: Red silk ties, Karakul Caps, Quilted winter jackets.
 
-Respond with sharp tailored elegance, respectful tone, in ${language === 'ur' ? 'Urdu' : 'English'} (or Roman Urdu if the user speaks Roman Urdu).
-Recommend actual ARTS APPAREL garments where appropriate. Keep answers concise, helpful and stylish.`;
+Customer support details:
+- Store location: Club Road, Near New Cafe Sajawal, Sadiqabad, Pakistan.
+- WhatsApp: 0305 8165623
+- Payment methods: Cash on Delivery (COD), JazzCash, Easypaisa, Bank transfer.
+- Inspect return policy: 7-day return window.
+
+Styling guidelines:
+- Respond with sharp tailored elegance and respectful tone.
+- Reply in ${language === 'ur' ? 'Urdu' : 'English'} (or Roman Urdu if the customer speaks Roman Urdu).
+- For exact real-time prices or stock availability, advise customers to check the storefront product pages. Keep responses concise, helpful, and courteous.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-4-argon',
+      model: 'gemini-2.5-flash',
       contents: `${systemInstruction}\n\nRecent Conversation:\n${conversationHistory}\n\nProvide the next helpful stylist response:`,
       config: {
         thinkingConfig: {
-          thinkingLevel: ThinkingLevel.HIGH,
+          thinkingLevel: ThinkingLevel.LOW,
         },
       },
     });
@@ -92,13 +151,10 @@ Extract search criteria and return STRICT JSON in this exact shape:
 }`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-4-argon',
+      model: 'gemini-2.5-flash',
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
-        thinkingConfig: {
-          thinkingLevel: ThinkingLevel.HIGH,
-        },
       },
     });
 
@@ -119,13 +175,8 @@ app.post('/api/ai/size-explain', async (req: Request, res: Response) => {
     }
 
     const response = await ai.models.generateContent({
-      model: 'gemini-4-argon',
+      model: 'gemini-2.5-flash',
       contents: `Explain in 2 polite sentences why size "${recommended_size}" is the recommended fit for a customer with height ${height_cm} cm, weight ${weight_kg} kg, and preference "${fit}" at ARTS APPAREL men's clothing store.`,
-      config: {
-        thinkingConfig: {
-          thinkingLevel: ThinkingLevel.HIGH,
-        },
-      },
     });
 
     return res.json({ text: response.text });
@@ -134,8 +185,8 @@ app.post('/api/ai/size-explain', async (req: Request, res: Response) => {
   }
 });
 
-// 4. AI Product Description Generator for Staff
-app.post('/api/ai/describe', async (req: Request, res: Response) => {
+// 4. AI Product Description Generator for Staff (Protected)
+app.post('/api/ai/describe', requireStaffOrOwner, async (req: Request, res: Response) => {
   try {
     const { name, category, fabric, points } = req.body;
     if (!ai) {
@@ -146,7 +197,7 @@ app.post('/api/ai/describe', async (req: Request, res: Response) => {
     }
 
     const response = await ai.models.generateContent({
-      model: 'gemini-4-argon',
+      model: 'gemini-2.5-flash',
       contents: `Create an upscale product description for Pakistani menswear brand ARTS APPAREL.
 Product Name: ${name}
 Category: ${category}
@@ -160,9 +211,6 @@ Return STRICT JSON:
 }`,
       config: {
         responseMimeType: 'application/json',
-        thinkingConfig: {
-          thinkingLevel: ThinkingLevel.HIGH,
-        },
       },
     });
 
@@ -175,20 +223,15 @@ Return STRICT JSON:
   }
 });
 
-// 5. AI Translate
-app.post('/api/ai/translate', async (req: Request, res: Response) => {
+// 5. AI Translate (Protected)
+app.post('/api/ai/translate', requireStaffOrOwner, async (req: Request, res: Response) => {
   try {
     const { text, from, to } = req.body;
     if (!ai) return res.json({ text });
 
     const response = await ai.models.generateContent({
-      model: 'gemini-4-argon',
+      model: 'gemini-2.5-flash',
       contents: `Translate the following text from ${from} to ${to} for a luxury men's clothing store in Pakistan:\n\n${text}`,
-      config: {
-        thinkingConfig: {
-          thinkingLevel: ThinkingLevel.HIGH,
-        },
-      },
     });
 
     return res.json({ text: response.text?.trim() });
@@ -197,8 +240,8 @@ app.post('/api/ai/translate', async (req: Request, res: Response) => {
   }
 });
 
-// 6. AI SEO & Auto-Tags
-app.post('/api/ai/seo', async (req: Request, res: Response) => {
+// 6. AI SEO & Auto-Tags (Protected)
+app.post('/api/ai/seo', requireStaffOrOwner, async (req: Request, res: Response) => {
   try {
     const { name, category, description } = req.body;
     if (!ai) {
@@ -210,7 +253,7 @@ app.post('/api/ai/seo', async (req: Request, res: Response) => {
     }
 
     const response = await ai.models.generateContent({
-      model: 'gemini-4-argon',
+      model: 'gemini-2.5-flash',
       contents: `Generate SEO metadata and tags for this menswear item:
 Name: ${name}
 Category: ${category}
@@ -224,9 +267,6 @@ Return STRICT JSON:
 }`,
       config: {
         responseMimeType: 'application/json',
-        thinkingConfig: {
-          thinkingLevel: ThinkingLevel.HIGH,
-        },
       },
     });
 
@@ -240,43 +280,60 @@ Return STRICT JSON:
   }
 });
 
-// 7. AI Review Sentiment Summary (TRD §9)
-app.post('/api/ai/review-summary', async (req: Request, res: Response) => {
+// 7. AI Review Sentiment Summary (Protected, Zero-review defense)
+app.post('/api/ai/review-summary', requireStaffOrOwner, async (req: Request, res: Response) => {
   try {
-    const { product_id, product_name, reviews } = req.body;
-    if (!ai) {
+    const { product_name, reviews } = req.body;
+
+    // Zero-review defense: Never fabricate sentiment if no reviews exist
+    if (!reviews || !Array.isArray(reviews) || reviews.length === 0) {
       return res.json({
-        summary_en: `Customers praise the exceptional fabric quality, crisp stitching and tailored fit of this ${product_name || 'garment'}.`,
-        summary_ur: `صارفین اس لباس کی شاندار سلائی، پائیدار کپڑے اور باوقار فٹنگ کی تعریف کرتے ہیں۔`,
+        summary_en: 'Not enough reviews to summarize.',
+        summary_ur: 'خلاصہ پیش کرنے کے لیے ریویوز کی تعداد ناکافی ہے۔',
       });
     }
 
-    const reviewTexts = (reviews || []).map((r: any) => `Rating ${r.rating}/5: "${r.comment}"`).join('\n');
+    if (!ai) {
+      return res.json({
+        summary_en: `Verified buyers have reviewed this ${product_name || 'garment'}.`,
+        summary_ur: `خریداروں نے اس لباس پر اپنے تاثرات قلمبند کیے ہیں۔`,
+      });
+    }
+
+    const reviewTexts = reviews
+      .map((r: any) => `Rating ${r.rating}/5: "${r.comment || ''}"`)
+      .filter((line: string) => line.length > 12)
+      .join('\n');
+
+    if (!reviewTexts) {
+      return res.json({
+        summary_en: 'Not enough reviews to summarize.',
+        summary_ur: 'خلاصہ پیش کرنے کے لیے ریویوز کی تعداد ناکافی ہے۔',
+      });
+    }
+
     const response = await ai.models.generateContent({
-      model: 'gemini-4-argon',
-      contents: `Synthesize a concise 2-sentence sentiment summary from verified buyer reviews for this Pakistani menswear garment:
+      model: 'gemini-2.5-flash',
+      contents: `Synthesize an objective 2-sentence sentiment summary strictly based on the provided customer reviews for this Pakistani menswear garment:
 Product: ${product_name || 'Bespoke Garment'}
 Customer Reviews:
-${reviewTexts || 'Verified buyers praise true-to-size cut, high density fabric, and fast dispatch across Pakistan.'}
+${reviewTexts}
 
 Return STRICT JSON:
 {
-  "summary_en": "2 concise sentences in English highlighting fabric, fit, and customer satisfaction",
-  "summary_ur": "2 sentences in Urdu summarizing the same praise in elegant Urdu"
+  "summary_en": "2 concise sentences in English accurately summarizing the customer feedback",
+  "summary_ur": "2 sentences in Urdu summarizing the same feedback in polite Urdu"
 }`,
       config: {
         responseMimeType: 'application/json',
-        thinkingConfig: {
-          thinkingLevel: ThinkingLevel.HIGH,
-        },
       },
     });
 
     return res.json(JSON.parse(response.text || '{}'));
   } catch (err: any) {
     return res.json({
-      summary_en: `Highly acclaimed by buyers for tailored drape, authentic fabric, and premium stitching.`,
-      summary_ur: `خریداروں کی جانب سے شاندار سلائی، عمدہ کپڑے اور معیاری فٹنگ کی بھرپور توثیق۔`,
+      summary_en: 'Customer feedback highlights quality fabric and tailored fit.',
+      summary_ur: 'خریداروں کے تاثرات معیاری فیبرک اور مناسب فٹنگ کی تصدیق کرتے ہیں۔',
     });
   }
 });

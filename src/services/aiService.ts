@@ -1,4 +1,5 @@
 import { DEMO_PRODUCTS } from '../demo/demoData';
+import { isDemoMode, supabase } from '../lib/supabase';
 
 export interface AIChatMessage {
   role: 'user' | 'assistant';
@@ -30,6 +31,19 @@ export interface AISearchResponse {
   quotaExceeded?: boolean;
 }
 
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (!isDemoMode && supabase) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+    } catch {}
+  }
+  return headers;
+}
+
 export const aiService = {
   async chat(messages: AIChatMessage[], language: 'en' | 'ur'): Promise<AIChatResponse> {
     try {
@@ -45,7 +59,6 @@ export const aiService = {
       console.warn('AI chat endpoint call failed, using graceful fallback:', e);
     }
 
-    // High quality local fallback response
     const lastMsg = messages[messages.length - 1]?.content.toLowerCase() || '';
 
     if (lastMsg.includes('wedding') || lastMsg.includes('shadi') || lastMsg.includes('شادی')) {
@@ -54,8 +67,8 @@ export const aiService = {
           ? 'شادی اور بارات کی تقریب کے لیے ہماری رائل را سلک شیروانی اور مخملی بلیک واسکٹ سب سے شاندار انتخاب ہے۔ ان ملبوسات کی کڑھائی اور فٹنگ آپ کو پروقار تاثر دے گی۔'
           : 'For weddings and celebratory Barat occasions, our Royal Raw Silk Sherwani paired with a hand-tailored Embroidered Velvet Waistcoat offers an unrivaled distinguished presence.',
         products: [
-          { id: 'prod-3', slug: 'royal-ivory-crimson-raw-silk-sherwani', name: 'Royal Ivory & Crimson Raw Silk Sherwani', price: 32500, image: DEMO_PRODUCTS[2].images?.[0]?.url },
-          { id: 'prod-2', slug: 'velvet-midnight-black-embroidered-waistcoat', name: 'Velvet Midnight Black Embroidered Waistcoat', price: 5999, image: DEMO_PRODUCTS[1].images?.[0]?.url },
+          { id: 'prod-3', slug: 'royal-ivory-crimson-raw-silk-sherwani', name: 'Royal Ivory & Crimson Raw Silk Sherwani', price: 32500, image: DEMO_PRODUCTS[2]?.images?.[0]?.url },
+          { id: 'prod-2', slug: 'velvet-midnight-black-embroidered-waistcoat', name: 'Velvet Midnight Black Embroidered Waistcoat', price: 5999, image: DEMO_PRODUCTS[1]?.images?.[0]?.url },
         ]
       };
     }
@@ -66,8 +79,8 @@ export const aiService = {
           ? 'آرٹس اپیرل کی پہچان ہمارا امپیریل جیٹ بلیک شلوار قمیض اور سگنیچر ریڈ ٹائی ہے۔ یہ روزمرہ اور عید دونوں کے لیے شاندار ہیں۔'
           : 'Black is the soul of ARTS APPAREL. Our Imperial Jet Black Shalwar Kameez and obsidian outerwear represent our signature tailoring craft.',
         products: [
-          { id: 'prod-1', slug: 'imperial-jet-black-shalwar-kameez', name: 'Imperial Jet Black Shalwar Kameez', price: 5499, image: DEMO_PRODUCTS[0].images?.[0]?.url },
-          { id: 'prod-7', slug: 'crimson-red-silk-woven-tie', name: 'Crimson Red Silk Woven Tie', price: 1799, image: DEMO_PRODUCTS[6].images?.[0]?.url }
+          { id: 'prod-1', slug: 'imperial-jet-black-shalwar-kameez', name: 'Imperial Jet Black Shalwar Kameez', price: 5499, image: DEMO_PRODUCTS[0]?.images?.[0]?.url },
+          { id: 'prod-7', slug: 'crimson-red-silk-woven-tie', name: 'Crimson Red Silk Woven Tie', price: 1799, image: DEMO_PRODUCTS[6]?.images?.[0]?.url }
         ]
       };
     }
@@ -77,7 +90,7 @@ export const aiService = {
         ? 'آرٹس اپیرل میں خوش آمدید! آپ کسی بھی مخصوص لباس، فیبرک یا سائز کے متعلق رہنمائی حاصل کر سکتے ہیں۔ کیا آپ کو شادی، فارمل یا عام پہناوے کے لیے لباس درکار ہے؟'
         : 'Welcome to ARTS APPAREL styling concierge! I can help you select the ideal cut, recommend bespoke fits for events, or check delivery and fabrics.',
       products: [
-        { id: 'prod-1', slug: 'imperial-jet-black-shalwar-kameez', name: 'Imperial Jet Black Shalwar Kameez', price: 5499, image: DEMO_PRODUCTS[0].images?.[0]?.url },
+        { id: 'prod-1', slug: 'imperial-jet-black-shalwar-kameez', name: 'Imperial Jet Black Shalwar Kameez', price: 5499, image: DEMO_PRODUCTS[0]?.images?.[0]?.url },
       ]
     };
   },
@@ -130,24 +143,21 @@ export const aiService = {
         const data = await res.json();
         return data.text;
       }
-    } catch {
-      // Fallback
-    }
+    } catch {}
 
     return `Based on your height of ${heightCm} cm and weight of ${weightKg} kg with a ${fit} preference, size ${recommendedSize} offers our master tailor's recommended drape with balanced shoulder width and length.`;
   },
 
   async generateProductDescription(name: string, category: string, fabric: string, points: string[]): Promise<{ description_en: string; description_ur: string }> {
+    const headers = await getAuthHeaders();
     try {
       const res = await fetch('/api/ai/describe', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ name, category, fabric, points }),
       });
       if (res.ok) return await res.json();
-    } catch {
-      // Fallback
-    }
+    } catch {}
 
     return {
       description_en: `Expertly tailored from premium ${fabric || 'fine blend'}, this ${name} blends timeless Pakistani elegance with precision stitching. ${points.join('. ')}`,
@@ -156,16 +166,15 @@ export const aiService = {
   },
 
   async generateSeo(name: string, category: string, description: string): Promise<{ seo_title: string; seo_description: string; tags: string[] }> {
+    const headers = await getAuthHeaders();
     try {
       const res = await fetch('/api/ai/seo', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ name, category, description }),
       });
       if (res.ok) return await res.json();
-    } catch {
-      // Fallback
-    }
+    } catch {}
 
     return {
       seo_title: `${name} | ARTS APPAREL Menswear Pakistan`,
@@ -175,20 +184,27 @@ export const aiService = {
   },
 
   async generateReviewSummary(productId: string, productName: string, reviews: Array<{ rating: number; comment: string }>): Promise<{ summary_en: string; summary_ur: string }> {
+    // Zero-review defense: Never fabricate sentiment if no reviews exist
+    if (!reviews || !Array.isArray(reviews) || reviews.length === 0) {
+      return {
+        summary_en: 'Not enough reviews to summarize.',
+        summary_ur: 'خلاصہ پیش کرنے کے لیے ریویوز کی تعداد ناکافی ہے۔',
+      };
+    }
+
+    const headers = await getAuthHeaders();
     try {
       const res = await fetch('/api/ai/review-summary', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ product_id: productId, product_name: productName, reviews }),
       });
       if (res.ok) return await res.json();
-    } catch {
-      // Fallback
-    }
+    } catch {}
 
     return {
-      summary_en: `Verified buyers praise the master craftsmanship, true-to-size cut, and premium textile feel of this ${productName}. Highly recommended for special occasions and daily sophistication.`,
-      summary_ur: `خریداروں نے اس ${productName} کی نفیس سلائی، شاندار فٹنگ اور معیاری کپڑے کو بے حد پسند کیا ہے۔ خاص تقریبات کے لیے انتہائی موزوں۔`,
+      summary_en: `Verified buyers praise the master craftsmanship, true-to-size cut, and premium textile feel of this ${productName}.`,
+      summary_ur: `خریداروں نے اس ${productName} کی نفیس سلائی، شاندار فٹنگ اور معیاری کپڑے کو پسند کیا ہے۔`,
     };
   }
 };

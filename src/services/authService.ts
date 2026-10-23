@@ -10,6 +10,14 @@ export interface AuthUser {
   created_at?: string;
 }
 
+export interface SignupResult {
+  success: boolean;
+  user?: AuthUser;
+  session?: any;
+  requiresEmailConfirmation?: boolean;
+  error?: string;
+}
+
 const DEMO_USERS_STORAGE_KEY = 'arts_demo_registered_users';
 const DEMO_SESSION_STORAGE_KEY = 'arts_demo_auth_session';
 
@@ -189,7 +197,7 @@ export const authService = {
     return { success: false, error: 'Authentication service is not configured.' };
   },
 
-  async signup(email: string, pass: string, name: string, phone?: string): Promise<{ success: boolean; user?: AuthUser; error?: string }> {
+  async signup(email: string, pass: string, name: string, phone?: string): Promise<SignupResult> {
     const cleanEmail = email.trim().toLowerCase();
 
     // 1. Authoritative Supabase Auth
@@ -217,7 +225,23 @@ export const authService = {
           role: 'customer', // Trigger on_auth_user_created enforces role='customer'
           phone: phone?.trim() || '',
         };
-        return { success: true, user: authUser };
+
+        // If email confirmation is required by Supabase Auth, data.session is null
+        if (!data.session) {
+          return {
+            success: true,
+            user: authUser,
+            session: null,
+            requiresEmailConfirmation: true,
+          };
+        }
+
+        return {
+          success: true,
+          user: authUser,
+          session: data.session,
+          requiresEmailConfirmation: false,
+        };
       }
       return { success: false, error: 'Registration failed: no user returned.' };
     }
@@ -243,7 +267,7 @@ export const authService = {
         localStorage.setItem(DEMO_USERS_STORAGE_KEY, JSON.stringify(updated));
         localStorage.setItem(DEMO_SESSION_STORAGE_KEY, JSON.stringify(newUser));
       } catch {}
-      return { success: true, user: newUser };
+      return { success: true, user: newUser, session: { access_token: 'demo-token' }, requiresEmailConfirmation: false };
     }
 
     return { success: false, error: 'Authentication service is not configured.' };

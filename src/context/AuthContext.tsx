@@ -11,7 +11,7 @@ interface AuthContextType {
   isOwner: boolean;
   isLoading: boolean;
   login: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
-  signup: (email: string, pass: string, name: string, phone?: string) => Promise<{ success: boolean; error?: string }>;
+  signup: (email: string, pass: string, name: string, phone?: string) => Promise<{ success: boolean; requiresEmailConfirmation?: boolean; error?: string }>;
   logout: () => Promise<void>;
   updateProfile: (updates: { full_name?: string; phone?: string }) => Promise<void>;
   switchDemoRole: (role: UserRole | 'guest') => void;
@@ -59,7 +59,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 id: session.user.id,
                 email: session.user.email || '',
                 full_name: profile?.full_name || session.user.user_metadata?.full_name || 'Customer',
-                role: profile?.role || 'customer',
+                role: profile?.role === 'owner' ? 'owner' : profile?.role === 'staff' ? 'staff' : 'customer',
                 phone: profile?.phone || session.user.user_metadata?.phone || '',
               });
             }
@@ -101,11 +101,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: false, error: res.error || 'Invalid credentials' };
   };
 
-  const signup = async (email: string, pass: string, name: string, phone?: string): Promise<{ success: boolean; error?: string }> => {
+  const signup = async (email: string, pass: string, name: string, phone?: string): Promise<{ success: boolean; requiresEmailConfirmation?: boolean; error?: string }> => {
     const res = await authService.signup(email, pass, name, phone);
-    if (res.success && res.user) {
-      setUser(res.user);
-      return { success: true };
+    if (res.success) {
+      // If email confirmation is required or session is null, keep context unauthenticated
+      if (res.requiresEmailConfirmation || !res.session) {
+        setUser(null);
+        return { success: true, requiresEmailConfirmation: true };
+      }
+      if (res.user) {
+        setUser(res.user);
+        return { success: true, requiresEmailConfirmation: false };
+      }
     }
     return { success: false, error: res.error || 'Failed to create account' };
   };

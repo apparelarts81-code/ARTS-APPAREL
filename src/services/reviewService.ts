@@ -62,39 +62,25 @@ export const reviewService = {
     user_id?: string;
   }): Promise<{ id: string; success: boolean }> {
     if (!isDemoMode && supabase) {
-      // Try documented RPC submit_review first
-      try {
-        const { data, error } = await supabase.rpc('submit_review', {
-          p_product_id: input.product_id,
-          p_rating: input.rating,
-          p_title: input.title.trim(),
-          p_comment: input.comment.trim(),
-        });
-
-        if (!error && data) {
-          return { id: String(data), success: true };
-        }
-      } catch (err) {
-        console.warn('submit_review RPC warning, trying table insert:', err);
-      }
-
-      const { data: inserted, error } = await supabase
-        .from('reviews')
-        .insert([{
-          product_id: input.product_id,
-          user_id: input.user_id,
-          rating: input.rating,
-          title: input.title.trim(),
-          comment: input.comment.trim(),
-          is_approved: false,
-        }])
-        .select()
-        .single();
+      // Security boundary: Must call authoritative RPC submit_review.
+      // Database validates delivered order eligibility and identity via auth.uid().
+      // Direct table insert fallback is strictly forbidden.
+      const { data, error } = await supabase.rpc('submit_review', {
+        p_product_id: input.product_id,
+        p_rating: input.rating,
+        p_title: input.title.trim(),
+        p_comment: input.comment.trim(),
+      });
 
       if (error) {
         throw new Error(`Failed to submit review: ${error.message}`);
       }
-      return { id: inserted.id, success: true };
+
+      if (!data) {
+        throw new Error('Failed to submit review: No review ID returned by server.');
+      }
+
+      return { id: String(data), success: true };
     }
 
     if (isDemoMode) {

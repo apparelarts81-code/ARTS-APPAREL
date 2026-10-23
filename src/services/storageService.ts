@@ -67,8 +67,8 @@ export const storageService = {
     }
 
     const compressed = await this.compressImage(file);
-    const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-    const fileName = `${orderId}/${Date.now()}-${sanitizedName}`;
+    const sanitizedBase = file.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const fileName = `${orderId}/${Date.now()}-${sanitizedBase}.webp`;
 
     if (!isDemoMode && supabase) {
       const { data, error } = await supabase.storage.from('payment-proofs').upload(fileName, compressed, {
@@ -105,8 +105,8 @@ export const storageService = {
     }
 
     const compressed = await this.compressImage(file);
-    const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-    const fileName = `${productId}/${Date.now()}-${sanitizedName}`;
+    const sanitizedBase = file.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const fileName = `${productId}/${Date.now()}-${sanitizedBase}.webp`;
 
     if (!isDemoMode && supabase) {
       const { data, error } = await supabase.storage.from('product-images').upload(fileName, compressed, {

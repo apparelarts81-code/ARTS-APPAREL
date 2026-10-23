@@ -51,43 +51,32 @@ export const returnService = {
     return [];
   },
 
-  async requestReturn(orderId: string, reason: string, userId?: string): Promise<{ success: boolean; id: string }> {
+  async requestReturn(orderId: string, reason: string, _userId?: string): Promise<{ success: boolean; id: string }> {
     if (!isDemoMode && supabase) {
-      // Try documented RPC request_return first
-      try {
-        const { data, error } = await supabase.rpc('request_return', {
-          p_order_id: orderId,
-          p_reason: reason.trim(),
-        });
-        if (!error && data) {
-          return { success: true, id: String(data) };
-        }
-      } catch (err) {
-        console.warn('request_return RPC warning, trying direct table insert:', err);
-      }
-
-      const { data: inserted, error } = await supabase
-        .from('return_requests')
-        .insert([{
-          order_id: orderId,
-          user_id: userId || null,
-          reason: reason.trim(),
-          status: 'requested',
-        }])
-        .select()
-        .single();
+      // Security boundary: Must use authoritative RPC request_return.
+      // Server validates order ownership, delivery status, and eligible 7-day window via auth.uid().
+      // Direct table insert fallback is strictly forbidden.
+      const { data, error } = await supabase.rpc('request_return', {
+        p_order_id: orderId,
+        p_reason: reason.trim(),
+      });
 
       if (error) {
         throw new Error(`Return request failed: ${error.message}`);
       }
-      return { success: true, id: inserted.id };
+
+      if (!data) {
+        throw new Error('Return request failed: No request ID returned by server.');
+      }
+
+      return { success: true, id: String(data) };
     }
 
     if (isDemoMode) {
       const newReq: ReturnRequest = {
         id: `ret-${Date.now()}`,
         order_id: orderId,
-        user_id: userId || null,
+        user_id: _userId || null,
         reason: reason.trim(),
         status: 'requested',
         staff_note: null,

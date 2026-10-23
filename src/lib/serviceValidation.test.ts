@@ -78,3 +78,17 @@ test('orderService.placeOrder handles demo order placement with valid structure'
   assert.ok(res.order_number.startsWith('ARTS-'));
   assert.equal(res.total, 5649);
 });
+
+test('aiService.generateReviewSummary produces deterministic review statistics when AI endpoint is offline', async () => {
+  const sampleReviews = [
+    { rating: 5, comment: 'Exceptional tailoring and fabric quality.' },
+    { rating: 4, comment: 'Fit is very sharp and elegant.' },
+  ];
+
+  // Call when endpoint fails / mock environment: must produce deterministic statistics without fabricating claims
+  const summary = await aiService.generateReviewSummary('prod-test', 'Imperial Shalwar Kameez', sampleReviews);
+  assert.ok(summary.summary_en.includes('2 customer review(s)'));
+  assert.ok(summary.summary_en.includes('4.5/5 stars'));
+  assert.ok(summary.summary_ur.includes('4.5/5'));
+});
+

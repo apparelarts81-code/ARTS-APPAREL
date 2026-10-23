@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import { useLanguage } from '../i18n/LanguageProvider';
 import { Button } from '../components/ui/Button';
 import { TieLine } from '../components/ui/TieLine';
 
 export const OrderSuccessPage: React.FC = () => {
   const { orderNumber } = useParams<{ orderNumber: string }>();
+  const location = useLocation();
+  const proofWarning = (location.state as { proofWarning?: string } | null)?.proofWarning;
   const { t } = useLanguage();
   const [copied, setCopied] = useState(false);
 
@@ -58,6 +60,23 @@ export const OrderSuccessPage: React.FC = () => {
           Save this order number to track your courier shipment anytime.
         </p>
       </div>
+
+      {/* Post-order Proof Follow-up Notice */}
+      {proofWarning && (
+        <div className="p-4 rounded-[8px] bg-amber-950/80 border border-amber-700 text-amber-200 text-xs max-w-md mx-auto text-left space-y-2">
+          <p className="font-bold flex items-center gap-1.5 text-amber-100">
+            <span>⚠️</span>
+            <span>Payment Receipt Notice</span>
+          </p>
+          <p>{proofWarning}</p>
+          <Link
+            to={`/track-order?order=${orderNumber || ''}`}
+            className="inline-block text-[#E31B23] hover:underline font-semibold"
+          >
+            Upload receipt on Track Order &rarr;
+          </Link>
+        </div>
+      )}
 
       {/* Guest Account Prompt */}
       <div className="p-6 rounded-[8px] bg-gradient-to-r from-neutral-900 to-[#141414] border border-neutral-800 text-left max-w-md mx-auto space-y-3">

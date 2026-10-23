@@ -13,6 +13,7 @@ import { WhatsAppButton } from './components/layout/WhatsAppButton';
 import { AIAssistantWidget } from './components/ai/AIAssistantWidget';
 import { CartDrawer } from './components/store/CartDrawer';
 import { AppRoutes } from './routes';
+import { isConfigMissing } from './lib/supabase';
 
 // Scroll to top on route change
 function ScrollToTop() {
@@ -92,6 +93,11 @@ function MainLayout() {
   if (isAdminRoute) {
     return (
       <>
+        {isConfigMissing && (
+          <div className="bg-red-950 border-b border-red-700 px-4 py-2 text-center text-xs text-red-200">
+            <strong className="font-bold">Production Configuration Missing:</strong> Supabase credentials (<code>VITE_SUPABASE_URL</code> & <code>VITE_SUPABASE_PUBLISHABLE_KEY</code>) are not configured. Database operations fail closed.
+          </div>
+        )}
         <AppRoutes />
         <CartDrawer />
       </>
@@ -100,12 +106,18 @@ function MainLayout() {
 
   return (
     <div className="min-h-screen flex flex-col bg-black text-white">
+      {isConfigMissing && (
+        <div className="bg-red-950 border-b border-red-700 px-4 py-2 text-center text-xs text-red-200">
+          <strong className="font-bold">Production Configuration Missing:</strong> Supabase credentials (<code>VITE_SUPABASE_URL</code> & <code>VITE_SUPABASE_PUBLISHABLE_KEY</code>) are not configured. Real orders fail closed. Set <code>VITE_DEMO_MODE=&quot;true&quot;</code> for preview.
+        </div>
+      )}
       <AnnouncementBar />
       <Header />
       <main className="flex-1">
         <AppRoutes />
       </main>
       <Footer />
+
 
       {/* Floating Widgets */}
       <WhatsAppButton />

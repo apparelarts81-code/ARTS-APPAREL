@@ -59,6 +59,17 @@ export const aiService = {
       console.warn('AI chat endpoint call failed, using graceful fallback:', e);
     }
 
+    // In production, return honest unavailable response without fabricated products or prices
+    if (!isDemoMode) {
+      return {
+        reply: language === 'ur'
+          ? 'معذرت، ہمارا سٹائلنگ اسسٹنٹ اس وقت عارضی طور پر مصروف ہے۔ براہ راست معاونت کے لیے ہمارے واٹس ایپ 03058165623 پر رابطہ فرمائیں۔'
+          : 'Our AI styling consultant is temporarily unavailable. For personal assistance, sizing advice, or direct orders, please reach out to our master tailors on WhatsApp at 0305 8165623.',
+        quotaExceeded: true,
+      };
+    }
+
+    // Explicit Demo Mode: Provide canned styling recommendations
     const lastMsg = messages[messages.length - 1]?.content.toLowerCase() || '';
 
     if (lastMsg.includes('wedding') || lastMsg.includes('shadi') || lastMsg.includes('شادی')) {
@@ -202,9 +213,11 @@ export const aiService = {
       if (res.ok) return await res.json();
     } catch {}
 
+    // Deterministic statistical summary: strictly derived from supplied reviews without AI fabrication
+    const avgRating = (reviews.reduce((sum, r) => sum + (Number(r?.rating) || 5), 0) / reviews.length).toFixed(1);
     return {
-      summary_en: `Verified buyers praise the master craftsmanship, true-to-size cut, and premium textile feel of this ${productName}.`,
-      summary_ur: `خریداروں نے اس ${productName} کی نفیس سلائی، شاندار فٹنگ اور معیاری کپڑے کو پسند کیا ہے۔`,
+      summary_en: `Based on ${reviews.length} customer review(s) with an average rating of ${avgRating}/5 stars. Individual review feedback is detailed below.`,
+      summary_ur: `گاہکوں کے ${reviews.length} جائزوں اور اوسط ریٹنگ ${avgRating}/5 ستاروں پر مبنی اعداد و شمار۔ انفرادی تبصرے نیچے ملاحظہ فرمائیں۔`,
     };
   }
 };

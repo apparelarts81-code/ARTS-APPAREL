@@ -151,11 +151,26 @@ This document specifies the exact missing database tables, PostgreSQL RPC functi
 - **Security:** `SECURITY DEFINER`, executable strictly by `service_role`. `REVOKE EXECUTE` from `anon` and `authenticated`.
 - **Expected Signature:**
   ```sql
-  consume_ai_quota(p_scope_key text, p_limit int) RETURNS boolean
+  consume_ai_quota(p_scope text, p_units int) RETURNS TABLE (allowed boolean, remaining int, retry_after_seconds int)
   ```
 - **Required Behavior:**
-  - Atomically increments today's usage in `ai_usage_daily` table for `(current_date, p_scope_key)` (`INSERT ... ON CONFLICT DO UPDATE`).
-  - Returns `false` if total calls exceed `p_limit`; otherwise returns `true`.
+  - Atomically increments today's usage in `ai_usage_daily` table for `(current_date, p_scope)` (`INSERT ... ON CONFLICT DO UPDATE`).
+  - Returns `allowed = false` if calls exceed daily limit for the scope; otherwise returns `allowed = true`.
+  - NOTE: While this RPC is pending database provisioning, `server.ts` uses a conservative process-local sliding window rate limit fallback (20 calls / 10 min for public anonymous scope; 60 calls / 10 min for verified staff scope).
+
+### 1.11 `request_return`
+- **Calling Service:** `src/services/returnService.ts` (`returnService.requestReturn`)
+- **Security:** `SECURITY DEFINER`, callable by `authenticated`.
+- **Expected Signature:**
+  ```sql
+  request_return(p_order_id uuid, p_reason text) RETURNS uuid
+  ```
+- **Required Behavior:**
+  - Verifies that caller (`auth.uid()`) is the owner of `p_order_id` in `orders`.
+  - Verifies that the order has `status = 'delivered'` and `delivered_at >= now() - interval '7 days'`.
+  - Enforces that no existing pending/approved return request exists for this order.
+  - Inserts row into `return_requests` with `status = 'requested'`, `user_id = auth.uid()`, `reason = p_reason`.
+  - Returns created return request `id`.
 
 ---
 

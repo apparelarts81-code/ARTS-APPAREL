@@ -62,6 +62,55 @@ function saveDemoOrders() {
   } catch {}
 }
 
+export function normalizePlaceOrderResponse(data: unknown): { order_id: string; order_number: string; total: number } {
+  if (!data) {
+    throw new Error('Authoritative order creation failed: Backend returned an empty response.');
+  }
+
+  let row: any = null;
+
+  if (Array.isArray(data)) {
+    if (data.length === 0) {
+      throw new Error('Authoritative order creation failed: No order record returned by backend.');
+    }
+    if (data.length > 1) {
+      throw new Error('Authoritative order creation failed: Ambiguous multiple order records returned.');
+    }
+    row = data[0];
+  } else if (typeof data === 'object') {
+    row = data;
+  } else {
+    throw new Error('Authoritative order creation failed: Unexpected response format from backend.');
+  }
+
+  if (!row || typeof row !== 'object') {
+    throw new Error('Authoritative order creation failed: Invalid order record returned.');
+  }
+
+  const orderId = row.order_id || row.id;
+  const orderNumber = row.order_number || row.orderNumber;
+  const rawTotal = row.total ?? row.order_total;
+
+  if (!orderId || typeof orderId !== 'string' || orderId.trim() === '') {
+    throw new Error('Authoritative order creation failed: Missing valid order identifier.');
+  }
+
+  if (!orderNumber || typeof orderNumber !== 'string' || orderNumber.trim() === '') {
+    throw new Error('Authoritative order creation failed: Missing valid order number.');
+  }
+
+  const total = Number(rawTotal);
+  if (isNaN(total) || total < 0) {
+    throw new Error('Authoritative order creation failed: Invalid order total amount returned.');
+  }
+
+  return {
+    order_id: String(orderId).trim(),
+    order_number: String(orderNumber).trim(),
+    total,
+  };
+}
+
 export const orderService = {
   async placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResult> {
     const normalizedPhone = normalizePhone(input.phone);
@@ -102,36 +151,35 @@ export const orderService = {
         throw new Error(msg);
       }
 
-      if (!data || !data.order_id || !data.order_number) {
-        throw new Error('Authoritative order creation failed: No order confirmation returned by backend.');
-      }
+      // Safe normalization supporting RETURNS TABLE (array of 1 row) or JSON object
+      const normalized = normalizePlaceOrderResponse(data);
 
       let proofUploadWarning: string | undefined;
 
       // If manual payment method with uploaded proof, persist to storage and record proof
       if (input.paymentMethod !== 'cod' && input.paymentProofFile) {
         try {
-          const uploadRes = await storageService.uploadPaymentProof(data.order_id, input.paymentProofFile);
+          const uploadRes = await storageService.uploadPaymentProof(normalized.order_id, input.paymentProofFile);
           const proofRes = await supabase.rpc('add_payment_proof', {
-            p_order_number: data.order_number,
+            p_order_number: normalized.order_number,
             p_phone: normalizedPhone,
             p_screenshot_path: uploadRes.path,
             p_transaction_id: input.transactionId?.trim() || '',
           });
           if (proofRes.error) {
             console.warn('add_payment_proof RPC error:', proofRes.error);
-            proofUploadWarning = 'Your order was placed, but we could not verify your receipt automatically. You can upload it via Track Order.';
+            proofUploadWarning = 'Your order was placed successfully! However, receipt verification could not be recorded automatically. Please upload your transfer receipt on the Track Order page.';
           }
         } catch (uploadErr: any) {
           console.warn('Payment proof upload error after order placement:', uploadErr);
-          proofUploadWarning = 'Order placed successfully! Please upload your payment transfer receipt via Track Order.';
+          proofUploadWarning = 'Your order was placed successfully! However, receipt upload failed. Please upload your transfer receipt on the Track Order page.';
         }
       }
 
       return {
-        order_id: data.order_id,
-        order_number: data.order_number,
-        total: Number(data.total),
+        order_id: normalized.order_id,
+        order_number: normalized.order_number,
+        total: normalized.total,
         proofUploadWarning,
       };
     }

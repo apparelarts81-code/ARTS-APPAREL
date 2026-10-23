@@ -14,6 +14,7 @@ export const SignupPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [confirmationPending, setConfirmationPending] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,11 +30,38 @@ export const SignupPage: React.FC = () => {
     setIsLoading(false);
 
     if (res.success) {
-      navigate('/account');
+      if (res.requiresEmailConfirmation) {
+        setConfirmationPending(true);
+      } else {
+        navigate('/account');
+      }
     } else {
       setError(res.error || 'Failed to create account');
     }
   };
+
+  if (confirmationPending) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-16 text-white space-y-6 text-center">
+        <div className="w-16 h-16 rounded-full bg-emerald-950/80 border border-emerald-600 mx-auto flex items-center justify-center text-emerald-400 text-2xl">
+          ✉️
+        </div>
+        <div className="space-y-2">
+          <h1 className="font-serif text-2xl sm:text-3xl font-bold tracking-tight">Confirm Your Email</h1>
+          <p className="text-xs text-neutral-300 leading-relaxed">
+            We have sent a verification email to <strong className="text-white">{email}</strong>. Please click the confirmation link in the email to activate your account.
+          </p>
+        </div>
+        <div className="pt-4">
+          <Link to="/login">
+            <Button variant="primary" size="md">
+              Proceed to Sign In
+            </Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-md mx-auto px-4 py-16 text-white space-y-6">

@@ -18,8 +18,7 @@
     ]
   },
   "vars": {
-    "SUPABASE_URL": "https://dummy.supabase.co",
-    "VITE_DEMO_MODE": "true",
+    "VITE_DEMO_MODE": "false",
     "VITE_SITE_URL": "https://artsapparel.pk",
     "VITE_GOOGLE_AUTH_ENABLED": "false"
   }
